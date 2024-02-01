@@ -1,4 +1,4 @@
-# Legare et al. 2024
+# Légaré et al. 2024
 
 Code for the "Structural and genetic constraints on zebrafish brain networks". Work in progress.
 
