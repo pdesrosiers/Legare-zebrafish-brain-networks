@@ -8,6 +8,7 @@ from scipy.signal import medfilt
 from numba import njit
 from scipy.ndimage import gaussian_filter1d, minimum_filter1d
 import h5py
+from scipy.stats import pearsonr, spearmanr
 
 
 def get_region_name(atlas, keyword):
@@ -101,6 +102,38 @@ def load_hdf5(path):
         data[dataset] = np.array(file[dataset])
     file.close()
     return data
+
+
+def correlate_matrix_lists(matrix_list1, matrix_list2):
+    L1, L2 = len(matrix_list1), len(matrix_list2)
+    N = matrix_list1[0].shape[0]
+    correlation_matrix = np.zeros((L1, L2))
+    triangle = np.triu_indices(N, 1)
+    for i in range(L1):
+        for j in range(L2):
+            correlation_matrix[i, j] = pearsonr(matrix_list1[i][triangle], matrix_list2[j][triangle])[0]
+    return correlation_matrix
+
+
+def fit_signal(signal1, signal2):
+    """Fit one-dimensional signal1 to signal2 using simple inversion of a linear matrix equation.
+    Returns: fit coefficients (a, b) and fit signal a * signal1 + b."""
+    signal1 = np.expand_dims(signal1.flatten(), axis=1)  # (N x 1) vector
+    signal2 = np.expand_dims(signal2.flatten(), axis=1)  # (N x 1) vector
+    vectors = np.concatenate([signal1, np.ones((signal1.shape[0], 1))], axis=1)  # (N x 2) matrix
+    coeffs = (np.linalg.pinv(vectors) @ signal2).flatten()
+    fit = coeffs[0] * signal1 + coeffs[1]
+    return coeffs, fit.flatten()
+
+
+def remove_global_signal(timeseries):
+    """Computes mean signal, then fits and subtracts this mean signal to each individual signal (row)."""
+    global_signal = np.mean(timeseries, axis=0)
+    regressed = np.zeros(timeseries.shape)
+    for i in range(timeseries.shape[0]):
+        _, fit = fit_signal(global_signal, timeseries[i])
+        regressed[i] = timeseries[i] - fit
+    return regressed
 
 
 class MapzebrainAtlas:

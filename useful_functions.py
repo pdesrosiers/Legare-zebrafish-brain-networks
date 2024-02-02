@@ -3,6 +3,7 @@ import os
 import sys
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+from main import *
 
 
 def get_correlation_matrices(timeseries_list):
