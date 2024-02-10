@@ -1,9 +1,6 @@
-import numpy as np
-import os
-import sys
-import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from main import *
+from visualization import *
 
 
 def get_correlation_matrices(timeseries_list):
@@ -14,13 +11,15 @@ def get_correlation_matrices(timeseries_list):
         corr_matrices.append(matrix)
     return corr_matrices
 
+
 def get_datasets(top_directory, keywords=[], exclude=[]):
     folders = identify_folders(top_directory, ['dpf'])
     datasets = []
     for folder in folders:
         datasets += identify_folders(folder, keywords=keywords, exclude=exclude)
     return datasets
-    
+
+
 def identify_files(path, keywords=None, exclude=None):
     items = os.listdir(path)
     if keywords is None:
@@ -36,6 +35,7 @@ def identify_files(path, keywords=None, exclude=None):
                 files.append(item)
     files.sort()
     return files
+
 
 def identify_folders(path, keywords=None, exclude=None):
     initial_folders = [f.path for f in os.scandir(path) if f.is_dir()]
@@ -73,6 +73,7 @@ def get_edgelist(matrix, directed=False):
         edgelist.append(tuple([edge[0], edge[1], weights[i]]))
     return edgelist
 
+
 def get_edge_positions(centroids, edgelist):
     x1, x2, y1, y2 = [], [], [], []
     for edge in edgelist:
@@ -85,6 +86,7 @@ def get_edge_positions(centroids, edgelist):
     for i in range(len(x1)):
         edgepos.append([(x1[i], y1[i]), (x2[i], y2[i])])
     return edgepos
+
 
 def draw_graph(ax, adjacency, centroids, directed=False, percentile=75, s=40, node_color='white', linewidth=1.5, edge_color='white', alpha=0.75, edge_cmap='hot', edge_vmin=0, edge_vmax=1, flip_order=False, node_edgecolor='black', node_edgewidth=1):
     edge_list = get_edgelist(adjacency)

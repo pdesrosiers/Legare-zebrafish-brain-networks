@@ -8,7 +8,12 @@ from scipy.signal import medfilt
 from numba import njit
 from scipy.ndimage import gaussian_filter1d, minimum_filter1d
 import h5py
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import pearsonr
+from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score, jaccard_score, fowlkes_mallows_score
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster, ward, leaves_list, set_link_color_palette
+import networkx as nx
+import bct
+from matplotlib import patches
 
 
 def get_region_name(atlas, keyword):
@@ -458,3 +463,172 @@ class MapzebrainAtlas:
         return density
 
 
+def double(vector):
+    return np.concatenate([vector, vector])
+
+
+def reorder_clusters_anteroposterior(clusters):
+    mean_cluster_ids = []
+    for c in np.unique(clusters):
+        mean_cluster_ids.append(np.percentile(np.where(clusters == c)[0], 33))
+    order = np.argsort(mean_cluster_ids) + 1
+    new_clusters = np.zeros((len(clusters),))
+    for i, c in enumerate(order):
+        new_clusters[clusters == c] = i + 1
+    return new_clusters.astype('int')
+
+
+def plot_matrix_communities(ax, matrix, communities, cmap='coolwarm', colors=None, edgecolor='black', linewidth=1, output=False):
+    ids = np.argsort(communities)
+    transitions = list(np.where(np.diff(communities[ids]) != 0)[0])
+    boundaries = [0]
+    for value in transitions:
+        boundaries.append(value + 1)
+    boundaries.append(matrix.shape[0])
+
+    im = ax.imshow(matrix[ids, :][:, ids], cmap=cmap)
+    for i, community in enumerate(np.unique(communities)):
+        r1, r2 = boundaries[i] - 0.5, boundaries[i + 1] - 0.5
+        if colors is not None:
+            rect = patches.Rectangle((r1, r1), r2 - r1, r2 - r1, linewidth=linewidth, edgecolor=colors[i], facecolor='none')
+        else:
+            rect = patches.Rectangle((r1, r1), r2 - r1, r2 - r1, linewidth=linewidth, edgecolor=edgecolor, facecolor='none')
+        ax.add_patch(rect)
+    if output:
+        return im
+
+
+def compute_communities_overlap(communities1, communities2, method='NMI', excluded=None):
+    if excluded is None:
+        excluded = []
+    if method == 'NMI':
+        score = normalized_mutual_info_score(communities1, np.delete(communities2, excluded))
+    elif method == 'Jaccard':
+        score = jaccard_score(communities1, np.delete(communities2, excluded), average='weighted')
+    elif method == 'FMI':
+        score = fowlkes_mallows_score(communities1, np.delete(communities2, excluded))
+    elif method == 'Rand':
+        score = adjusted_rand_score(communities1, np.delete(communities2, excluded))
+    return score
+
+
+def compute_communities_overlap_curve(coassignment1, coassignment2, method='NMI', N_communities=np.arange(2, 11), excluded=None, linkage_method='ward'):
+    if excluded is None:
+        excluded = []
+    scores = []
+    for N in N_communities:
+        Z = linkage(1 - coassignment1, linkage_method)
+        communities1 = reorder_clusters_anteroposterior(fcluster(Z, t=N, criterion='maxclust'))
+        Z = linkage(1 - coassignment2, linkage_method)
+        communities2 = reorder_clusters_anteroposterior(fcluster(Z, t=N, criterion='maxclust'))
+        if method == 'NMI':
+            score = normalized_mutual_info_score(communities1, np.delete(communities2, excluded))
+        elif method == 'Jaccard':
+            score = jaccard_score(communities1, np.delete(communities2, excluded), average='weighted')
+        elif method == 'FMI':
+            score = fowlkes_mallows_score(communities1, np.delete(communities2, excluded))
+        elif method == 'Rand':
+            score = adjusted_rand_score(communities1, np.delete(communities2, excluded))
+        scores.append(score)
+    return scores
+
+
+def compute_communities_overlap_curve_shuffled(coassignment1, coassignment2, method='NMI', N_communities=np.arange(2, 11), excluded=None, N_shuffles=1000, linkage_method='ward'):
+    if excluded is None:
+        excluded = []
+    scores_null = []
+    for N in tqdm(N_communities, file=sys.stdout):
+        Z = linkage(1-coassignment1, linkage_method)
+        communities1 = reorder_clusters_anteroposterior(fcluster(Z, t=N, criterion='maxclust'))
+        Z = linkage(1-coassignment2, linkage_method)
+        communities2 = reorder_clusters_anteroposterior(fcluster(Z, t=N, criterion='maxclust'))
+        null_values = []
+        for _ in range(N_shuffles):
+            np.random.shuffle(communities1)
+            if method == 'NMI':
+                score = normalized_mutual_info_score(communities1, np.delete(communities2, excluded))
+            elif method == 'Jaccard':
+                score = jaccard_score(communities1, np.delete(communities2, excluded), average='weighted')
+            elif method == 'FMI':
+                score = fowlkes_mallows_score(communities1, np.delete(communities2, excluded))
+            elif method == 'Rand':
+                score = adjusted_rand_score(communities1, np.delete(communities2, excluded))
+            null_values.append(score)
+        scores_null.append(null_values)
+    return scores_null
+
+
+def compute_coassignment_probability(W, N_iters=1000, gamma_min=0.7, gamma_max=2.2, threshold=True):
+    if np.array_equal(W, W.T):
+        directed = False
+    else:
+        directed = True
+
+    gammas = np.linspace(gamma_min, gamma_max, N_iters)
+    communities = np.zeros((W.shape[0], N_iters))
+
+    for i in tqdm(range(N_iters), file=sys.stdout):
+        if directed:
+            communities[:, i], _ = bct.modularity_louvain_dir(W, gamma=gammas[i])
+        else:
+            communities[:, i], _ = bct.modularity_louvain_und(W, gamma=gammas[i])
+
+    coassignment_matrix = compute_consensus_matrix_from_labels(communities)
+
+    if threshold:
+        communities_null = shuffle_communities(communities)
+        coassignment_matrix_null = compute_consensus_matrix_from_labels(communities_null)
+        coassignment_matrix -= np.mean(coassignment_matrix_null)
+        coassignment_matrix[coassignment_matrix < 0] = 0
+
+    return coassignment_matrix
+
+
+@njit
+def compute_consensus_matrix_from_labels(communities):
+    R = communities.shape[0]
+    coassignment_matrix = np.zeros((R, R))
+    for i in range(R):
+        for j in range(i + 1, R):
+            coassignment_matrix[i, j] = len(np.where((communities[i, :] == communities[j, :]) == True)[0]) / \
+                                        communities.shape[1]
+            coassignment_matrix[j, i] = coassignment_matrix[i, j]
+    return coassignment_matrix
+
+
+@njit
+def shuffle_communities(communities):
+    null_communities = np.copy(communities)
+    for i in range(null_communities.shape[1]):
+        vector = null_communities[:, i]
+        np.random.shuffle(vector)
+        null_communities[:, i] = vector
+    return null_communities
+
+
+def compute_coassignment_probability_nx(W, N_iters=1000, gamma_min=0.8, gamma_max=3, threshold=True):
+    gammas = np.linspace(gamma_min, gamma_max, N_iters)
+    communities = np.zeros((W.shape[0], N_iters))
+
+    for i in tqdm(range(N_iters), file=sys.stdout):
+        communities[:, i] = communities_louvain(W, gamma=gammas[i])
+
+    coassignment_matrix = compute_consensus_matrix_from_labels(communities)
+
+    if threshold:
+        communities_null = shuffle_communities(communities)
+        coassignment_matrix_null = compute_consensus_matrix_from_labels(communities_null)
+        coassignment_matrix -= np.mean(coassignment_matrix_null)
+        coassignment_matrix[coassignment_matrix < 0] = 0
+
+    return coassignment_matrix
+
+
+def communities_louvain(W, gamma=1.0):
+    communities = np.zeros((W.shape[0],))
+    G = nx.from_numpy_array(W)
+    output = nx.community.louvain_communities(G, resolution=gamma)
+    for cid, s in enumerate(output):
+        for node in s:
+            communities[node] = cid
+    return communities.astype('int')
