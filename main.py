@@ -14,6 +14,10 @@ from scipy.cluster.hierarchy import dendrogram, linkage, fcluster, ward, leaves_
 import networkx as nx
 import bct
 from matplotlib import patches
+from scipy.interpolate import interp1d
+import nrrd
+from tifffile import imwrite
+from skimage.io import imread
 
 
 def get_region_name(atlas, keyword):
@@ -52,11 +56,15 @@ def baseline_minfilter(signal, window=300, sigma1=5, sigma2=100, debug=False):
 
 
 def compute_dff_using_minfilter(timeseries, window=200, sigma1=0.1, sigma2=50):
-    dff = np.zeros(timeseries.shape)
-    for i in range(timeseries.shape[0]):
-        if np.any(timeseries[i]):
-            baseline = baseline_minfilter(timeseries[i], window=window, sigma1=sigma1, sigma2=sigma2)
-            dff[i] = (timeseries[i] - baseline) / baseline
+    if len(timeseries.shape) == 1:
+        baseline = baseline_minfilter(timeseries, window=window, sigma1=sigma1, sigma2=sigma2)
+        dff = (timeseries - baseline) / baseline
+    else:
+        dff = np.zeros(timeseries.shape)
+        for i in range(timeseries.shape[0]):
+            if np.any(timeseries[i]):
+                baseline = baseline_minfilter(timeseries[i], window=window, sigma1=sigma1, sigma2=sigma2)
+                dff[i] = (timeseries[i] - baseline) / baseline
     return dff
 
 
@@ -139,6 +147,16 @@ def remove_global_signal(timeseries):
         _, fit = fit_signal(global_signal, timeseries[i])
         regressed[i] = timeseries[i] - fit
     return regressed
+
+
+@njit
+def compute_distances(centroids):
+    dist_matrix = np.zeros((centroids.shape[0], centroids.shape[0]))
+    for i in range(centroids.shape[0]):
+        for j in range(i + 1):
+            dist_matrix[i, j] = np.sqrt(np.sum((centroids[i] - centroids[j]) ** 2))
+            dist_matrix[j, i] = dist_matrix[i, j]
+    return dist_matrix
 
 
 class MapzebrainAtlas:
@@ -478,7 +496,19 @@ def reorder_clusters_anteroposterior(clusters):
     return new_clusters.astype('int')
 
 
-def plot_matrix_communities(ax, matrix, communities, cmap='coolwarm', colors=None, edgecolor='black', linewidth=1, output=False):
+def permute_timeseries(timeseries):
+    permuted = np.copy(timeseries)
+    for i in range(permuted.shape[0]):
+        j = int(np.random.uniform(0, timeseries.shape[1]))
+        permuted[i, :] = np.concatenate([permuted[i, j:], permuted[i, :j]])
+    return permuted
+
+
+def plot_matrix_communities(ax, matrix, communities, cmap='coolwarm', colors=None, edgecolor='black', linewidth=1, output=False, vmin=None, vmax=None):
+    if vmin is None:
+        vmin = np.min(matrix)
+    if vmax is None:
+        vmax = np.max(matrix)
     ids = np.argsort(communities)
     transitions = list(np.where(np.diff(communities[ids]) != 0)[0])
     boundaries = [0]
@@ -486,7 +516,7 @@ def plot_matrix_communities(ax, matrix, communities, cmap='coolwarm', colors=Non
         boundaries.append(value + 1)
     boundaries.append(matrix.shape[0])
 
-    im = ax.imshow(matrix[ids, :][:, ids], cmap=cmap)
+    im = ax.imshow(matrix[ids, :][:, ids], cmap=cmap, vmin=vmin, vmax=vmax)
     for i, community in enumerate(np.unique(communities)):
         r1, r2 = boundaries[i] - 0.5, boundaries[i + 1] - 0.5
         if colors is not None:
@@ -632,3 +662,58 @@ def communities_louvain(W, gamma=1.0):
         for node in s:
             communities[node] = cid
     return communities.astype('int')
+
+
+def interpolate_signal(signal, new_size):
+    signal = signal.flatten()
+    x = np.arange(0, len(signal))
+    y = signal
+    f = interp1d(x, y)
+    x_new = np.linspace(0, len(signal) - 1, new_size, endpoint=False)
+    interpolated = f(x_new)
+    return interpolated
+
+
+def load_stack(path):
+    if '.tif' in path:
+        return imread(path)
+    elif '.nrrd' in path:
+        array, metadata = nrrd.read(path)
+        array = np.swapaxes(array, 0, 2)
+        return array, metadata
+
+
+def save_stack(path, stack, header=None):
+    """
+    Function to save a numpy array in a 16-bit .tif format.
+    """
+    if '.tif' in path:
+        imwrite(path, stack.astype('uint16'))
+    elif '.nrrd' in path:
+        if header is None:
+            nrrd.write(path, np.transpose(stack.astype('uint16'), (2, 1, 0)))
+        else:
+            nrrd.write(path, np.transpose(stack.astype('uint16'), (2, 1, 0)), header)
+
+
+def find_onsets(binary_vector):
+    return np.where(np.append([0], np.diff(binary_vector.astype('float'))) > 0)[0]
+
+
+def find_plateaus(binary_vector):
+    onsets = find_onsets(binary_vector.astype('float'))
+    plateaus = np.zeros((len(onsets), len(binary_vector)))
+    for i, onset in enumerate(onsets):
+        j = onset
+        plateaus[i, j] = 1
+        while plateaus[i, j] == 1:
+            j += 1
+            try:
+                plateaus[i, j] = binary_vector[j]
+            except:
+                break
+    return plateaus
+
+
+def find_offsets(binary_vector):
+    return np.where(np.append([0], np.diff(binary_vector.astype('float'))) < 0)[0]

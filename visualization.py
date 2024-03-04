@@ -12,6 +12,60 @@ from scipy.ndimage import gaussian_filter
 from scipy import optimize
 import matplotlib as mpl
 import matplotlib.gridspec as gridspec
+from main import *
+
+
+def rgb2hex(rgb_color):
+    """Convert RGB color values to HEX code."""
+    if rgb_color.dtype == 'float' and np.sum(rgb_color <= 1) == 3:
+        rgb_color = (rgb_color * 255).astype('int')
+    r, g, b = rgb_color
+    return "#{:02x}{:02x}{:02x}".format(r, g, b)
+
+
+def get_colors_cmap(cmap, n_colors, start=0, end=1, hex=False):
+    sampling_points = np.linspace(start, end, n_colors, endpoint=True).astype('float')
+    colors = []
+    for s in sampling_points:
+        rgb_color = plt.get_cmap(cmap)(s)[:3]
+        if hex:
+            hex_color = rgb2hex((np.array(rgb_color) * 255).astype('int'))
+            colors.append(hex_color)
+        else:
+            colors.append(rgb_color)
+    return colors
+
+
+def merge(images, colors):
+    """
+    Merge a list of grayscale images (2D numpy arrays) into a single RGB image with normalization.
+
+    Parameters:
+    - images: List of 2D numpy arrays, each representing a grayscale image.
+    - colors: List of tuples, each representing the RGB color to assign to the corresponding grayscale image.
+
+    Returns:
+    - A 3D numpy array representing the normalized merged RGB image.
+    """
+    # Ensure there's a color for each image
+    if len(images) != len(colors):
+        raise ValueError("Each image must have a corresponding color.")
+
+    # Initialize the RGB image
+    height, width = images[0].shape
+    rgb_image = np.zeros((height, width, 3), dtype=np.float32)
+
+    # Merge each grayscale image into the RGB channels with normalization
+    for img, color in zip(images, colors):
+        for c in range(3):  # Iterate over RGB channels
+            # Normalize based on the maximum intensity in each image to prevent saturation
+            normalized_img = img / np.max(img) if np.max(img) > 0 else img
+            rgb_image[:, :, c] += normalized_img * color[c]
+
+    # Normalize the final image to be within [0, 1] range
+    rgb_image /= np.max(rgb_image)
+
+    return rgb_image
 
 
 def hex2rgb(hex_color):
@@ -357,6 +411,19 @@ class PaperFigure:
         middle_color = cmap(value)
         color = mpl.colors.to_rgb(middle_color)
         return color
+
+def plot_node_values(ax, values, atlas, excluded=None, view='top', double_vector=False, s=25, linewidth=1, cmap='hot', edgecolor='black'):
+    if excluded is None:
+        excluded = []
+    if view == 'top':
+        ax.imshow(atlas.XYprojection, cmap='gray')
+        centroids = np.concatenate([atlas.regionCentroids['left'], atlas.regionCentroids['right']], axis=0)
+        centroids[:, 1] = 974 - centroids[:, 1]
+        if double_vector:
+            values = double(values)
+            excluded = np.concatenate([excluded, excluded + 70])
+        centroids = np.delete(centroids, excluded, axis=0)
+        ax.scatter(centroids[:, 0], centroids[:, 1], cmap=cmap, c=values, linewidth=linewidth, s=s, edgecolor=edgecolor)
 
 """
 OLD DEPRECATED FUNCTION
