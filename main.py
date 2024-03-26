@@ -18,6 +18,19 @@ from scipy.interpolate import interp1d
 import nrrd
 from tifffile import imwrite
 from skimage.io import imread
+from scipy.ndimage import median_filter, maximum_filter
+from scipy.signal import medfilt
+import contextlib
+
+
+@contextlib.contextmanager
+def temp_random_state(seed=None):
+    state = np.random.get_state()  # Save the current state
+    np.random.seed(seed)  # Set the temporary seed
+    try:
+        yield  # Perform your operations within this block
+    finally:
+        np.random.set_state(state)  # Restore the original state
 
 
 def get_region_name(atlas, keyword):
@@ -147,6 +160,13 @@ def remove_global_signal(timeseries):
         _, fit = fit_signal(global_signal, timeseries[i])
         regressed[i] = timeseries[i] - fit
     return regressed
+
+
+def filter_timeseries(timeseries, sigma=2):
+    filtered = np.zeros(timeseries.shape)
+    for i in range(timeseries.shape[0]):
+        filtered[i] = gaussian_filter1d(timeseries[i], sigma)
+    return filtered
 
 
 @njit
@@ -713,7 +733,247 @@ def find_plateaus(binary_vector):
             except:
                 break
     return plateaus
-
+    
 
 def find_offsets(binary_vector):
     return np.where(np.append([0], np.diff(binary_vector.astype('float'))) < 0)[0]
+    
+    
+def max_interpolate_signal(signal, desired_length):
+    original_length = len(signal)
+    bin_size = original_length / desired_length
+    interpolated_signal = []
+    for i in range(desired_length):
+        start = int(i * bin_size)
+        end = int((i + 1) * bin_size)
+        max_value = max(signal[start:end])
+        interpolated_signal.append(max_value)
+    return np.array(interpolated_signal)
+
+
+def exponential(t, tau=3.5):
+    return np.exp(-1 * (t / tau))
+    
+    
+class TailAnalysis:
+
+    def __init__(self, tail_angles, fps, sigma_median=3, sigma_gaussian=1):
+        self.raw_angles = tail_angles
+        self.angles = self.filter_angles(tail_angles, sigma_median=sigma_median, sigma_gaussian=sigma_gaussian)
+        for i in range(tail_angles.shape[0]):
+            self.angles[i, :] -= np.mean(self.angles[i, :])
+        self.curvature = np.sum(self.angles, axis=0)
+        self.curvature = self.curvature - np.mean(self.curvature)
+        self.raw_curvature = np.sum(self.raw_angles, axis=0)
+
+        self.velocity = np.abs(np.diff(self.curvature))
+        self.raw_velocity = np.abs(np.diff(self.raw_curvature))
+        self.fps = fps
+        self.t = np.linspace(0, self.angles.shape[1]/self.fps, self.angles.shape[1], endpoint=False)
+        self.baseline = np.mean(np.sum(self.angles, axis=0))
+        self.clusters = []
+
+    def detect_swim_bouts(self, threshold=0.5, window_min=600, window_max=30, min_duration=45):
+
+        # Converting to seconds
+        w_min = int(self.fps * window_min / 1000)
+        w_max = int(self.fps * window_max / 1000)
+        min_duration = int(self.fps * min_duration / 1000)
+
+        maxcurve = maximum_filter(subtract_local_minima(np.abs(self.curvature), w_min), w_max)
+        plateaus = find_plateaus(maxcurve > threshold)
+        plateaus = plateaus[np.sum(plateaus, axis=1) >= min_duration, :]
+
+        events = np.sum(plateaus, axis=0)
+        onsets = find_onsets(events)
+        offsets = find_offsets(events)
+
+        self.onsets, self.offsets, self.events = onsets, offsets, events
+
+    def remove_low_amplitude_events(self, threshold=1):
+        onsets, offsets = [], []
+        for i, onset in enumerate(self.onsets):
+            if np.sum(np.abs(self.curvature[onset:self.offsets[i]]) > threshold) == 0:
+                self.events[onset:self.offsets[i]] = 0
+            else:
+                onsets.append(onset)
+                offsets.append(self.offsets[i])
+        self.onsets = onsets
+        self.offsets = offsets
+
+    def exclude_frames(self, frames):
+        onsets, offsets = [], []
+        for i in range(len(self.offsets)):
+            if frames[0] <= self.onsets[i] <= frames[1]:
+                self.events[self.onsets[i]:self.offsets[i]] = 0
+            elif frames[0] <= self.offsets[i] <= frames[1]:
+                self.events[self.onsets[i]:self.offsets[i]] = 0
+            else:
+                onsets.append(self.onsets[i])
+                offsets.append(self.offsets[i])
+        self.onsets, self.offsets = onsets, offsets
+
+    def compile_swim_bouts(self):
+        bouts = []
+        maxLength = 0
+        for i in range(len(self.onsets)):
+            bouts.append(self.angles[:, self.onsets[i]:self.offsets[i]])
+            if bouts[-1].shape[1] > maxLength:
+                maxLength = bouts[-1].shape[1]
+        self.swimBouts = bouts
+
+        boutMatrix = np.zeros((len(bouts), maxLength))
+        for i in range(len(bouts)):
+            totalCurvature = np.sum(bouts[i], axis=0) - self.baseline
+            L = bouts[i].shape[1]
+            boutMatrix[i, :L] = np.sign(np.mean(totalCurvature[0:5])) * totalCurvature
+        self.boutMatrix = boutMatrix
+
+    def cluster_swim_bouts(self, nClusters):
+        kmeans = KMeans(n_clusters=nClusters, random_state=0).fit(self.boutMatrix)
+        self.clusters = kmeans.labels_
+        clusterCentroids = []
+        for cluster in np.unique(self.clusters):
+            IDs = np.where(self.clusters == cluster)[0]
+            clusterBouts = np.zeros((len(IDs), self.boutMatrix.shape[1]))
+            for i, ID in enumerate(IDs):
+                totalCurvature = np.sum(self.swimBouts[ID], axis=0) - self.baseline
+                L = self.swimBouts[ID].shape[1]
+                clusterBouts[i, :L] = np.sign(np.mean(totalCurvature[0:5])) * totalCurvature
+            clusterCentroids.append(np.mean(clusterBouts, axis=0))
+        self.clusterCentroids = clusterCentroids
+        self.colors = self.generateDistinctColors(nClusters, saturation=100, value=100, randomness=0)
+        clusterVectors = []
+        for cluster in np.unique(self.clusters):
+            vector = np.array([0] * len(self.events))
+            IDs = np.where(self.clusters == cluster)[0]
+            for ID in IDs:
+                vector[self.onsets[ID]:self.offsets[ID]] = 1
+            clusterVectors.append(vector)
+        self.clusterVectors = clusterVectors
+
+    def add_calcium_data(self, data, calciumFps):
+        self.calciumData = data
+        self.calciumFps = calciumFps
+        T = self.calciumData['timeseries'].shape[1]
+        self.t_calcium = np.linspace(0, (T - 1) / self.calciumFps, T)
+
+    def compile_motion_during_calcium(self):
+        delta_t = (self.t_calcium[1] - self.t_calcium[0]) / 2
+        motionLeft, motionRight = [], []
+        motionSpikes = np.copy(self.raw_curvature)[:-1]
+        motionSpikes[self.events == 0] = 0
+        for t in self.t_calcium:
+            IDs = (self.t[:-1] >= (t - delta_t)) & (self.t[:-1] < (t + delta_t))
+            motionLeft.append(np.sum(motionSpikes[IDs][motionSpikes[IDs] > 0]))
+            motionRight.append(np.abs(np.sum(motionSpikes[IDs][motionSpikes[IDs] < 0])))
+        self.motionLeft, self.motionRight = np.array(motionLeft), np.array(motionRight)
+        self.totalMotion = self.motionLeft + self.motionRight
+
+        if any(self.clusters):
+            clusterMotion = []
+            for cluster in np.unique(self.clusters):
+                clusterSpeed = np.abs(np.copy(self.raw_velocity))
+                clusterSpeed[(self.clusterVectors[cluster] == 1) == False] = 0
+                motion = []
+                for t in self.t_calcium:
+                    IDs = (self.t[:-1] >= (t - delta_t)) & (self.t[:-1] < (t + delta_t))
+                    motion.append(np.sum(clusterSpeed[IDs]))
+                clusterMotion.append(motion)
+            self.clusterMotion = clusterMotion
+
+    def create_regressors(self, tau=3.5):
+        self.regressorLeft = convolve(self.motionLeft, self.exponential_decay(self.t_calcium,
+                                                                              halfDecay=tau))[:len(self.t_calcium)]
+        self.regressorRight = convolve(self.motionRight, self.exponential_decay(self.t_calcium,
+                                                                                halfDecay=tau))[:len(self.t_calcium)]
+        self.regressorTotal = convolve(self.totalMotion, self.exponential_decay(self.t_calcium,
+                                                                                halfDecay=tau))[:len(self.t_calcium)]
+        if any(self.clusters):
+            regressors = []
+            for motion in self.clusterMotion:
+                regressor = convolve(motion, self.exponential_decay(self.t_calcium, halfDecay=tau))[:len(self.t_calcium)]
+                regressors.append(regressor)
+            self.regressors = regressors
+
+    def display_cluster(self, cluster, figsize=(10, 5), xlim=[0, 2]):
+        plt.figure(figsize=figsize)
+        IDs = np.where(self.clusters == cluster)
+        plt.plot([0, 100], [0, 0], '--', color='black', linewidth=3)
+        for ID in IDs[0]:
+            #totalCurvature = np.sum(self.swimBouts[ID], axis=0) - self.baseline
+            #direction = np.mean(totalCurvature[0:5])
+            totalCurvature = np.sum(self.swimBouts[ID], axis=0) - np.sum(self.swimBouts[ID], axis=0)[0]
+            direction = np.mean(totalCurvature[0:10])
+            plt.plot(self.t[0:len(totalCurvature)], np.sign(direction) * totalCurvature, color='black', alpha=0.2,
+                     linewidth=3)
+        plt.plot(self.t[0:len(self.clusterCentroids[cluster])], self.clusterCentroids[cluster], color=self.colors[cluster], linewidth=5)
+        plt.xlim(xlim)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Total curvature (rad)')
+        plt.tight_layout(pad=0)
+
+    def display_cluster_centroids(self, figsize=(10, 10)):
+        plt.figure(figsize=figsize)
+        for i, centroid in enumerate(self.clusterCentroids):
+            plt.plot(self.t[0:len(centroid)], gaussian_filter1d(centroid, 1), linewidth=5, label='Cluster {}'.format(i + 1),
+                     color=self.colors[i])
+        plt.xlim([0, 0.3])
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('Total curvature (rad)')
+        plt.tight_layout(pad=0)
+
+    def display_cluster_sequence(self, figsize=(10, 10), xlim=None, alpha=0.2, color='black'):
+        if xlim is None:
+            xlim = [0, self.t[-1]]
+        plt.figure(figsize=figsize)
+        plt.plot(self.t, self.curvature, linewidth=4, color='black')
+        for i, vector in enumerate(self.clusterVectors):
+            plt.fill_between(self.t[:-1], -20, 40 * vector - 20, linewidth=0, edgecolor=None, alpha=alpha, color=self.colors[i])
+        plt.xlabel('Time (s)')
+        plt.ylabel('Tail curvature (rad)')
+        plt.ylim([-np.max(self.curvature), np.max(self.curvature)])
+        plt.xlim(xlim)
+
+    def display_sequence(self, figsize=(10, 10), xlim=None):
+        if xlim is None:
+            xlim = [0, self.t[-1]]
+        plt.figure(figsize=figsize)
+        plt.plot(self.t, self.curvature, linewidth=4, color='black')
+        plt.fill_between(self.t[:-1], -20, 40 * self.events - 20, linewidth=0, edgecolor=None, alpha=1, color='red')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Tail curvature (rad)')
+        plt.ylim([-np.max(self.curvature), np.max(self.curvature)])
+        plt.xlim(xlim)
+
+    def display_event(self, event_number):
+        onset = self.onsets[event_number]
+        offset = self.offsets[event_number]
+        plt.figure(figsize=(15, 5))
+        plt.plot(self.curvature[onset - 50:offset + 50])
+        plt.plot(self.events[onset - 50:offset + 50])
+        plt.title('Onset: frame {}'.format(onset))
+
+    def display_velocity(self, event_number):
+        onset = self.onsets[event_number]
+        offset = self.offsets[event_number]
+        plt.figure(figsize=(15, 5))
+        plt.plot(self.velocity[onset - 50:offset + 50])
+        plt.plot(self.smoothVelocity[onset - 50:offset + 50])
+        plt.plot(self.events[onset - 50:offset + 50])
+        plt.title('Onset: frame {}'.format(onset))
+
+    @staticmethod
+    def filter_angles(angles, sigma_median=3, sigma_gaussian=1):
+        filtered = np.copy(angles)
+        for i in range(filtered.shape[0]):
+            filtered[i, :] = gaussian_filter1d(
+                median_filter(median_filter(filtered[i, :], sigma_median),
+                              sigma_median),
+                sigma_gaussian)
+        return filtered
+
+    @staticmethod
+    def exponential_decay(t, tau=3.5):
+        return np.exp(-1 * (t / tau))

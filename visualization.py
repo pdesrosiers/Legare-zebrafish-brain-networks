@@ -13,6 +13,7 @@ from scipy import optimize
 import matplotlib as mpl
 import matplotlib.gridspec as gridspec
 from main import *
+import cv2
 
 
 def rgb2hex(rgb_color):
@@ -34,38 +35,6 @@ def get_colors_cmap(cmap, n_colors, start=0, end=1, hex=False):
         else:
             colors.append(rgb_color)
     return colors
-
-
-def merge(images, colors):
-    """
-    Merge a list of grayscale images (2D numpy arrays) into a single RGB image with normalization.
-
-    Parameters:
-    - images: List of 2D numpy arrays, each representing a grayscale image.
-    - colors: List of tuples, each representing the RGB color to assign to the corresponding grayscale image.
-
-    Returns:
-    - A 3D numpy array representing the normalized merged RGB image.
-    """
-    # Ensure there's a color for each image
-    if len(images) != len(colors):
-        raise ValueError("Each image must have a corresponding color.")
-
-    # Initialize the RGB image
-    height, width = images[0].shape
-    rgb_image = np.zeros((height, width, 3), dtype=np.float32)
-
-    # Merge each grayscale image into the RGB channels with normalization
-    for img, color in zip(images, colors):
-        for c in range(3):  # Iterate over RGB channels
-            # Normalize based on the maximum intensity in each image to prevent saturation
-            normalized_img = img / np.max(img) if np.max(img) > 0 else img
-            rgb_image[:, :, c] += normalized_img * color[c]
-
-    # Normalize the final image to be within [0, 1] range
-    rgb_image /= np.max(rgb_image)
-
-    return rgb_image
 
 
 def hex2rgb(hex_color):
@@ -412,169 +381,157 @@ class PaperFigure:
         color = mpl.colors.to_rgb(middle_color)
         return color
 
-def plot_node_values(ax, values, atlas, excluded=None, view='top', double_vector=False, s=25, linewidth=1, cmap='hot', edgecolor='black'):
+
+def plot_regional_values(values, atlas, excluded=None, figsize=(2, 2), double_vector=False, dpi=300, cmap_bg='gray', ratio=0.6, s=5, cmap='viridis', vmin=None, vmax=None, linewidth=0.5):
+
     if excluded is None:
         excluded = []
-    if view == 'top':
-        ax.imshow(atlas.XYprojection, cmap='gray')
-        centroids = np.concatenate([atlas.regionCentroids['left'], atlas.regionCentroids['right']], axis=0)
-        centroids[:, 1] = 974 - centroids[:, 1]
-        if double_vector:
-            values = double(values)
-            excluded = np.concatenate([excluded, excluded + 70])
-        centroids = np.delete(centroids, excluded, axis=0)
-        ax.scatter(centroids[:, 0], centroids[:, 1], cmap=cmap, c=values, linewidth=linewidth, s=s, edgecolor=edgecolor)
+    centroids = np.concatenate([atlas.regionCentroids['left'], atlas.regionCentroids['right']], axis=0)
+    centroids[:, 1] = 974 - centroids[:, 1]
+    if double_vector:
+        values = double(values)
+        excluded = np.concatenate([excluded, excluded + 70])
+    centroids = np.delete(centroids, excluded, axis=0)
+    if vmin is None:
+        vmin = np.min(values)
+    if vmax is None:
+        vmax = np.max(values)
 
-"""
-OLD DEPRECATED FUNCTION
+    w1, w2 = ratio * figsize[0], (1 - ratio) * figsize[0]
+    fig = PaperFigure(figsize=figsize, dpi=dpi)
+    fig.add_axes('projection_top', (0, 0), w1 * 0.99, figsize[1])
+    fig.add_axes('projection_side', (w1, 0), w2, figsize[1])
 
-def plot_network(ax, atlas, adjacency_matrix, excluded_regions=None, colors=cm.hot(range(256)), true_order=True, view='top', vmin=None, vmax=None, percentile=90, alpha=True):
-    W = adjacency_matrix
-    N_colors = colors.shape[0]
-    if true_order:
-        order = (((W - np.min(W)) / np.max(W - np.min(W))) * (N_colors - 1)).astype('int')
-    else:
-        order = (((W - np.percentile(W, percentile)) / np.max(W - np.percentile(W, percentile))) * (N_colors - 1)).astype('int')
-        order[order < 0] = 0
-    centroids = np.copy(atlas.regionCentroids['left'])
-    centroids = np.append(centroids, atlas.regionCentroids['right'], axis=0)
-    if excluded_regions is not None:
-        centroids = np.delete(centroids, excluded_regions, axis=0)
+    ax = fig.axes['projection_top']
+    ax.imshow(atlas.XYprojection, cmap=cmap_bg, aspect='auto')
+    ax.scatter(centroids[:, 0], centroids[:, 1], c=values, edgecolor='black', s=s, vmin=vmin, vmax=vmax, cmap=cmap, linewidth=linewidth)
+    ax.set_xlim([65, 505])
+    ax.set_ylim([850, 50])
+    ax.axis('off')
+
+    ax = fig.axes['projection_side']
+    ax.imshow(np.rot90(atlas.XZprojection, k=3), cmap=cmap_bg, aspect='auto')
+    ax.scatter(359 - centroids[:, 2], centroids[:, 1], c=values, cmap=cmap, edgecolor='black', s=s, vmin=vmin, vmax=vmax, linewidth=linewidth)
+    ax.set_xlim([50, 359])
+    ax.set_ylim([850, 50])
+    ax.axis('off')
+
+    fig.show()
+
+        
+def trim_centroids_atlas(centroids):
+    centroids[:, 0] = np.clip(centroids[:, 0], 0, 596)
+    centroids[:, 1] = np.clip(centroids[:, 1], 0, 973)
+    centroids[:, 2] = np.clip(centroids[:, 2], 0, 358)
+    return centroids
+
+
+def compute_projection_density_atlas(centroids, view='top', sigma=2):
+    centroids_trimmed = np.round(trim_centroids_atlas(centroids)).astype('int')
     if view == 'top':
-        image = atlas.XYprojection
-        ax.imshow(image, cmap='gray')
-        ax.scatter(centroids[:, 1], centroids[:, 0], color='white', s=100, edgecolor='black', zorder=10)
-        for i in range(W.shape[0]):
-            for j in range(i + 1, W.shape[1]):
-                if (np.abs(W[i, j]) >= np.percentile(np.abs(W), percentile)) & (W[i, j] != 0):
-                    if alpha:
-                        alpha=(order[i, j]/(np.max(order))) ** 2
-                    else:
-                        alpha=1
-                    ax.plot([centroids[i, 1], centroids[j, 1]],
-                           [centroids[i, 0], centroids[j, 0]],
-                            color=colors[order[i, j]],
-                            alpha=alpha,
-                            linewidth=1 + 5 * (order[i, j] / np.max(order)),
-                            zorder=1 + (order[i, j] / np.max(order))
-                           )
+        density = np.zeros(atlas.XYprojection.shape)
+        for c in np.round(centroids_trimmed).astype('int'):
+            density[c[1], c[0]] += 1
+        density = gaussian_filter(density, sigma)
+        density_values = density[centroids_trimmed[:, 1], centroids_trimmed[:, 0]]
     elif view == 'side':
-        image = atlas.XZprojection
-        ax.imshow(image, cmap='gray')
-        ax.scatter(centroids[:, 1], centroids[:, 2], color='white', s=100, edgecolor='black', zorder=10)
-        for i in range(W.shape[0]):
-            for j in range(i + 1, W.shape[1]):
-                if (np.abs(W[i, j]) >= np.percentile(np.abs(W), percentile)) & (W[i, j] != 0):
-                    if alpha:
-                        alpha=(order[i, j]/(np.max(order))) ** 2
-                    else:
-                        alpha=1
-                    ax.plot([centroids[i, 1], centroids[j, 1]],
-                           [centroids[i, 2], centroids[j, 2]],
-                            color=colors[order[i, j]],
-                            alpha=alpha,
-                            linewidth=1 + 3 * (order[i, j] / np.max(order)),
-                            zorder=1 + (order[i, j] / np.max(order))
-                           )
-"""
+        density = np.zeros(atlas.XZprojection.shape)
+        for c in np.round(centroids_trimmed).astype('int'):
+            density[c[2], c[1]] += 1
+        density = gaussian_filter(density, sigma)
+        density_values = density[centroids_trimmed[:, 2], centroids_trimmed[:, 1]]
+    return density_values
 
 
-def optimize_node_placement(centroids, graphWidth=597, maxiter=4, delta=25):
-    """
-    Expands the space between graph nodes to optimize edge display, without destroying global structure of the network.
-    Achieved by minimizing an energy function with terms of repulsive energy between nodes and attractive energy with
-    towards the center position of all nodes. Mirrors left nodes to the right hemisphere for symmetry. The gamma factor
-    is used to set the attractive and repulsive terms in the same initial scale.
-    Parameters
-    ----------
-    centroids : dict
-        Dictionary with keys ['left', 'right'] which access the left and right hemisphere node centroids, respectively.
-    centroids['left'] / centroids['right'] : numpy.ndarray
-        Nx2 matrix with columns of X and Y coordinates for the N nodes of a brain hemisphere.
-    graphWidth : int
-        Heuristic parameter which sets the distance from which the left nodes are mirrored. Typically represents the
-        pixel width of the image upon which the original graph would be projected.
-    maxiter : int
-        Number of optimize.minimize iterations. The larger the value, the more the nodes are spread apart. Could be
-        limited by the delta parameter.
-    delta : int
-        Half-width of horizontal and vertical boxes which limit node movements. Larger values allow nodes to spread
-        further apart.
-    Returns
-    -------
-    nodesToDict(X, Y) : dict
-        Dictionary in the same format as the input argument "centroids", with new optimized node positions.
-    """
+def compute_density_atlas(centroids, sigma=2):
+    centroids_trimmed = np.round(trim_centroids_atlas(centroids)).astype('int')
+    density = np.zeros((974, 597, 359))
+    for c in np.round(centroids_trimmed).astype('int'):
+        density[c[1], c[0], c[2]] += 1
+    density = gaussian_filter(density, sigma)
+    density_values = density[centroids_trimmed[:, 1], centroids_trimmed[:, 0], centroids_trimmed[:, 2]]
+    return density_values
+    
 
-    X, Y = centroids[:, 0], centroids[:, 1]
-    center = [np.mean(X), np.mean(Y)]
-    X -= center[0]
-    Y -= center[1]
-    repulsive, attractive = computeInitialEnergyComponents(X, Y)
-    gamma = attractive / repulsive
-    initialGuess = np.array([X, Y]).ravel()
-    bounds = []
-    for position in initialGuess:
-        bounds.append((position-delta, position+delta))
-    results = optimize.minimize(computeEnergy, initialGuess, bounds=bounds, options={'maxiter': maxiter}, args=gamma)
-    positions = results.x
-    X = positions[:int(len(positions)/2)]
-    Y = positions[int(len(positions)/2):]
-    return X, Y
+def plot_centroids_on_atlas(centroids, atlas, figsize=(2, 2), color='red', alpha=0.05, dpi=300, cmap_bg='gray', ratio=0.6, s=3, density=False, cmap='turbo', sigma=10):
 
+    if density:
+        rho = compute_density_atlas(centroids, sigma=sigma)
+        order = np.argsort(rho)
+    w1, w2 = ratio * figsize[0], (1 - ratio) * figsize[0]
+    fig = PaperFigure(figsize=figsize, dpi=dpi)
+    fig.add_axes('projection_top', (0, 0), w1 * 0.99, figsize[1])
+    fig.add_axes('projection_side', (w1, 0), w2, figsize[1])
 
-def computeEnergy(positions, gamma):
-    """
-    Function to optimize in the "optimizeNodePlacement" function. Measures the repulsive and attractive energy of nodes
-    according to their positions.
-    Parameters
-    ----------
-    positions : numpy.ndarray
-        1-D array containing all X positions from all left and right hemisphere nodes, followed by all Y positions from
-        the same nodes. Format [x_1, ... , x_N, y_1, ... , y_N]
-    gamma : float
-        Factor attributed to the repulsive energy term.
-    Returns
-    -------
-    totalEnergy : float
-        Total potential energy of the node positions.
-    """
-    X = positions[:int(len(positions)/2)]
-    Y = positions[int(len(positions)/2):]
-    N = len(X)
-    distanceMatrix = np.zeros((N, N))
-    for i in range(N):
-        for j in range(i+1, N):
-            distanceMatrix[i, j] = np.sqrt((X[i] - X[j]) ** 2 + (Y[i] - Y[j]) ** 2)
-            distanceMatrix[j, i] = distanceMatrix[i, j]
-    totalEnergy = gamma * np.sum(1/distanceMatrix[np.triu_indices(N, 1)]) + np.sum(np.sqrt(X ** 2 + Y ** 2))
-    return totalEnergy
+    ax = fig.axes['projection_top']
+    ax.imshow(atlas.XYprojection, cmap=cmap_bg, aspect='auto')
+    if density:
+        ax.scatter(centroids[order, 0], centroids[order, 1], c=rho[order], cmap=cmap, alpha=alpha, edgecolor='None', s=s)
+    else:
+        ax.scatter(centroids[:, 0], centroids[:, 1], color=color, alpha=alpha, edgecolor='None', s=s)
+    ax.set_xlim([65, 505])
+    ax.set_ylim([850, 50])
+    ax.axis('off')
+
+    ax = fig.axes['projection_side']
+    ax.imshow(np.rot90(atlas.XZprojection, k=3), cmap=cmap_bg, aspect='auto')
+    if density:
+        ax.scatter(359 - centroids[order, 2], centroids[order, 1], c=rho[order], cmap=cmap, alpha=alpha, edgecolor='None', s=s)
+    else:
+        ax.scatter(359 - centroids[:, 2], centroids[:, 1], color=color, alpha=alpha, edgecolor='None', s=s)
+    ax.set_xlim([50, 359])
+    ax.set_ylim([850, 50])
+    ax.axis('off')
+
+    fig.show()
 
 
-def computeInitialEnergyComponents(X, Y):
-    """
-    Internal function used in the "optimizeNodePlacement" function. Computes the repulsive and attractive energy of
-    the centered node distribution, which is then used to compute the gamma factor.
-    Parameters
-    ----------
-    X : numpy.ndarray
-        1-D array of all X coordinates of both left and right hemisphere nodes. Format [leftNodes --> rightNodes]
-    Y : numpy.ndarray
-        1-D array of all Y coordinates of both left and right hemisphere nodes. Format [leftNodes --> rightNodes]
-    Returns
-    -------
-    repulsive : float
-        Total repulsive energy of nodes (1/r potential)
-    attractive : float
-        Total attractive energy of nodes with regard to the origin (r potential)
-    """
-    N = len(X)
-    distanceMatrix = np.zeros((N, N))
-    for i in range(N):
-        for j in range(i+1, N):
-            distanceMatrix[i, j] = np.sqrt((X[i] - X[j]) ** 2 + (Y[i] - Y[j]) ** 2)
-            distanceMatrix[j, i] = distanceMatrix[i, j]
-    repulsive = np.sum(1/distanceMatrix[np.triu_indices(N, 1)])
-    attractive = np.sum(np.sqrt(X ** 2 + Y ** 2))
-    return repulsive, attractive
+def sigmoid_contrast(image, gain=10, cutoff=0.5):
+    return 1 / (1 + np.exp(gain * (cutoff - image)))
+
+
+def merge(images, colors, gain=10, cutoff=0.5, contrast=False):
+    if len(images) != len(colors):
+        raise ValueError("Each image must have a corresponding color.")
+
+    height, width = images[0].shape
+    rgb_image = np.zeros((height, width, 3), dtype=np.float32)
+
+    for img, color in zip(images, colors):
+        for c in range(3):  # Iterate over RGB channels
+            normalized_img = img / np.max(img) if np.max(img) > 0 else img
+            rgb_image[:, :, c] += normalized_img * color[c]
+
+    rgb_image /= np.max(rgb_image)
+
+    for c in range(3):
+        if contrast:
+            rgb_image[:, :, c] = sigmoid_contrast(rgb_image[:, :, c], gain=gain, cutoff=cutoff)
+        else:
+            rgb_image[:, :, c] = rgb_image[:, :, c]
+    return rgb_image
+
+
+def merge_with_pixelwise_color_contrast(images, colors):
+    height, width = images[0].shape
+    rgb_image = np.zeros((height, width, 3), dtype=np.float32)
+
+    for img, color in zip(images, colors):
+        normalized_img = img / np.max(img) if np.max(img) > 0 else img
+        weights = normalized_img / np.sum([img / np.max(img) if np.max(img) > 0 else img for img in images], axis=0)
+        for c in range(3):
+            rgb_image[:, :, c] += weights * normalized_img * color[c]
+
+    rgb_image /= np.max(rgb_image)
+
+    rgb_image_8bit = np.uint8(rgb_image * 255)
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    for c in range(3):
+        rgb_image_8bit[:, :, c] = clahe.apply(rgb_image_8bit[:, :, c])
+
+    rgb_image = rgb_image_8bit.astype(np.float32) / 255
+
+    return rgb_image
+
 
