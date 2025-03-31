@@ -1,10 +1,9 @@
-from calimba.analysis.utilities import *
+from calimba.analysis import *
 from skimage import io
 from scipy.sparse import load_npz
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage.measurements import center_of_mass
 from tqdm import tqdm
-from scipy.signal import medfilt
 from numba import njit
 from scipy.ndimage import gaussian_filter1d, minimum_filter1d
 import h5py
@@ -21,6 +20,8 @@ from skimage.io import imread
 from scipy.ndimage import median_filter, maximum_filter
 from scipy.signal import medfilt
 import contextlib
+import pickle
+from scipy.signal import convolve
 
 
 @contextlib.contextmanager
@@ -31,6 +32,50 @@ def temp_random_state(seed=None):
         yield  # Perform your operations within this block
     finally:
         np.random.set_state(state)  # Restore the original state
+
+
+def get_datasets(top_directory, keywords=[], exclude=[]):
+    folders = identify_folders(top_directory, ['dpf'])
+    datasets = []
+    for folder in folders:
+        datasets += identify_folders(folder, keywords=keywords, exclude=exclude)
+    return datasets
+
+
+def identify_files(path, keywords=None, exclude=None):
+    items = os.listdir(path)
+    if keywords is None:
+        keywords = []
+    if exclude is None:
+        exclude = []
+    files = []
+    for item in items:
+        if all(keyword in item for keyword in keywords):
+            if any(excluded in item for excluded in exclude):
+                pass
+            else:
+                files.append(item)
+    files.sort()
+    return files
+
+
+def identify_folders(path, keywords=None, exclude=None):
+    initial_folders = [f.path for f in os.scandir(path) if f.is_dir()]
+    if keywords is None:
+        keywords = []
+    if exclude is None:
+        exclude = []
+    folders = []
+    for folder in initial_folders:
+        if all(keyword in folder for keyword in keywords):
+            if any(excluded in folder for excluded in exclude):
+                pass
+            else:
+                folders.append(folder)
+    for i in range(len(folders)):
+        folders[i] += '/'
+    folders.sort()
+    return folders
 
 
 def get_region_name(atlas, keyword):
@@ -53,6 +98,15 @@ def compute_correlation_matrix(timeseries, arctanh=False):
                 matrix[i, j] = np.corrcoef(timeseries[i], timeseries[j])[0, 1]
             matrix[j, i] = matrix[i, j]
     return matrix
+
+
+def get_correlation_matrices(timeseries_list):
+    corr_matrices = []
+    for i in range(len(timeseries_list)):
+        matrix = compute_correlation_matrix(timeseries_list[i])
+        matrix[np.isnan(matrix)] = 0
+        corr_matrices.append(matrix)
+    return corr_matrices
 
 
 def baseline_minfilter(signal, window=300, sigma1=5, sigma2=100, debug=False):

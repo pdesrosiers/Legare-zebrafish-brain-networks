@@ -1,17 +1,39 @@
 import numpy as np
-from scipy.stats import f_oneway
-import statsmodels.stats.multicomp as mc
 from scipy.signal import convolve
 import cv2
 from numba import njit
 import pathlib
-from calimba.analysis.utilities import normalize
+from calimba.analysis import *
 from scipy.linalg import pinv
-from calimba.analysis.timeseries import *
 from scipy.ndimage import gaussian_filter
 from scipy.spatial import cKDTree
-from scipy.stats import norm
-from scipy.stats import percentileofscore
+from scipy.stats import norm, f_oneway, percentileofscore, shapiro, levene, ttest_ind, mannwhitneyu
+import statsmodels.sandbox.stats.multicomp as mc
+
+
+def check_normality(data):
+    stat, p = shapiro(data)
+    return p > 0.05
+
+
+def check_variances(data1, data2):
+    stat, p = levene(data1, data2)
+    return p > 0.05
+
+
+def compare_groups(data1, data2, print_results=True):
+    normality_data1 = check_normality(data1)
+    normality_data2 = check_normality(data2)
+    equal_variances = check_variances(data1, data2)
+    if normality_data1 and normality_data2 and equal_variances:
+        stat, p = ttest_ind(data1, data2)
+        if print_results: 
+            print(f"Independent T-Test: Statistics={stat:.3f}, p={p:.12f}")
+    else:
+        stat, p = mannwhitneyu(data1, data2)
+        if print_results: 
+            print(f"Mann-Whitney U Test: Statistics={stat:.3f}, p={p:.12f}")
+    return stat, p
 
 
 def groups_ANOVA_Tukey(data, significance_ANOVA=0.05):

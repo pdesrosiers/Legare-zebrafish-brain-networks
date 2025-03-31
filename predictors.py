@@ -8,6 +8,9 @@ import bct
 from scipy.stats import pearsonr, zscore
 from scipy.linalg import expm
 
+from main import *
+#from useful_functions import *
+
 
 def normalize(matrix):
     norm = np.linalg.norm(matrix)
@@ -533,6 +536,7 @@ def navigation_wu(L, D, max_hops=None):
     sr = 1 - (len(inf_ixes) - n)/(n**2 - n)
 
     return sr, PL_bin, PL_wei, PL_dis, paths
+    
     
 def invsym(A, gamma=1, inf=True):
     inv_A = inverse_matrix(A, gamma=gamma, inf=inf)
