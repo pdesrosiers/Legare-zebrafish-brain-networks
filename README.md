@@ -9,11 +9,22 @@ Data analyses are conducted in multiple Jupyter notebooks that are mostly split 
 # Detailed list
 
 - `Figure1-Analysis` : This notebook briefly inspects the calcium imaging dataset, counts neurons in every brain region, excludes regions with few cells, detrends fluorescence time series, computes functional networks, and performs the inter-individual similarity/fingerprinting analysis; statistical validations of fingerprinting are conducted in a separate notebook.
-- `Supp-SCCM` : Defines the connectivity null model, generates null connectivity matrices from SC matrices generated prior, and generates **Supplementary Figures S10, S11, & S12.**
+- `Figure1-Layout`: Loads previously calculated results and generates **Figure 1**.
+- `Figure2-Layout`: Loads previously calculated results and generates **Figure 2**.
+- `Figure3-Layout`: Loads previously calculated results and generates **Figure 3**.
+- `Figure4-Layout`: Loads previously calculated results and generates **Figure 4**.
+- `Figure5-Layout`: Loads previously calculated results and generates **Figure 5**.
+- `Figure6-Layout`: Loads previously calculated results and generates **Figure 6**.
+- `Figure7-Layout`: Loads previously calculated results and generates **Figure 7**.
+
+- `Supp-SCCM` : Defines the connectivity null model, generates null connectivity matrices from SC matrices generated beforehand, and generates **Supplementary Figures S10, S11, & S12**.
+- `Supp-SparseSC` : Replication of key results using the sparse SC matrix, related to **Supplementary Figure S18**.
+- `Supp-SC-Valudations` : Validation of the boundary expansion procedure for SC calculation, related to **Supplementary Figure S9**.
 
 # Authors
 
-For any questions regarding the repository, please contact us:
-
 - Antoine Légaré (antoine.legare.1@ulaval.ca)
 - Patrick Desrosiers (patrick.desrosiers@phy.ulaval.ca)
+
+For any questions regarding the repository, please contact us!
+
