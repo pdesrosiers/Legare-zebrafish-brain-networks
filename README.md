@@ -1,6 +1,6 @@
 # Structural and genetic determinants of zebrafish functional brain networks
 
-Code associated with the "Structural and genetic determinants of zebrafish functional brain networks" paper, currently available on bioRxiv.
+Code associated with the "Structural and genetic determinants of zebrafish functional brain networks" paper, currently available on [bioRxiv](https://www.biorxiv.org/content/10.1101/2024.12.20.629476v1.abstract). If you use this repository for your own work, please cite the paper!
 
 # Overview
 
