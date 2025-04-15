@@ -235,32 +235,24 @@ def compute_distances(centroids):
 
 class MapzebrainAtlas:
 
-    path = '/home/tonepone/Documents/Registration/StructuralAtlas/'  # Hardcoded
-
     def __init__(self, path):
         """
         Class that contains many atlas-related things like brain region masks, names, functions to map centroids into
-        binary masks, etc.
-
-        Args:
-            path: Absolute path to the folder containing all the atlas-related data which gets loaded automatically
-            when an object is created.
+        binary masks, etc. Must be provided a 'path' to a folder containing all atlas-related files that are loaded
+        when the object is first instanciated. Make sure the path ends with a '/'.
         """
         self.path = path
         self.dimensions = np.array([974, 597, 359])
         self.shape = np.array([974, 597, 359])
-        self.volume = np.product(self.dimensions)
+        self.volume = np.product(self.dimensions) # Volume (in voxels)
         self.masks = load_npz(path + 'regions.npz')
         self.relativeVolumes = np.load(path + 'volumes.npy')
         self.regionNames = self.loadRegionNames(path)
         self.region_acronyms = self.load_acronyms(path)
         self.regionCentroids = self.loadRegionCentroids(path)
-        self.regionCentroids['right'][57, 0] = self.dimensions[1] - self.regionCentroids['left'][57, 0]
+        self.regionCentroids['right'][57, 0] = self.dimensions[1] - self.regionCentroids['left'][57, 0] # Correcting coordinate
         self.excludedRegions = []
         self.rostroCaudalOrder = self.establishRostroCaudalOrder()
-        self.connectome = np.load(path + 'connectome.npy').astype('float').T
-        self.directedMatrix = self.computeDirectedNetwork()
-        self.undirectedMatrix = self.computeUndirectedNetwork()
         self.XYprojection = io.imread(path + 'XY_H2BGCaMP6s.tif')
         self.XZprojection = io.imread(path + 'XZ_H2BGCaMP6s.tif')
 
@@ -282,20 +274,6 @@ class MapzebrainAtlas:
     @property
     def acronyms(self):
         return list(np.delete(self.region_acronyms, self.excludedRegions))
-
-    @property
-    def directed(self):
-        if any(self.excludedRegions):
-            return delete_rows_and_columns(self.directedMatrix, self.excludedRegions)
-        else:
-            return self.directedMatrix
-
-    @property
-    def undirected(self):
-        if any(self.excludedRegions):
-            return delete_rows_and_columns(self.undirectedMatrix, self.excludedRegions)
-        else:
-            return self.undirectedMatrix
 
     @property
     def centroids(self):
@@ -339,46 +317,22 @@ class MapzebrainAtlas:
                 halfMask = np.copy(mask)
                 if hemisphere == 'left':
                     if orientation == 'vertical':
-                        halfMask[:, :, 282:] = 0
+                        halfMask[:, :, 284:] = 0
                     elif orientation == 'horizontal':
-                        halfMask[:, 282:, :] = 0
+                        halfMask[:, 284:, :] = 0
                 elif hemisphere == 'right':
                     if orientation == 'vertical':
-                        halfMask[:, :, :282] = 0
+                        halfMask[:, :, :284] = 0
                     elif orientation == 'horizontal':
-                        halfMask[:, :282, :] = 0
+                        halfMask[:, :284, :] = 0
                 regionLabels[hemisphere][:, i] = halfMask[centroids[:, 2], centroids[:, 1], centroids[:, 0]]
         regionLabels['left'] = regionLabels['left'].astype('bool')
         regionLabels['right'] = regionLabels['right'].astype('bool')
 
         return np.concatenate([regionLabels['left'], regionLabels['right']], axis=1)
 
-    def computeDirectedNetwork(self):
-        adjacency = np.copy(self.connectome)
-        for i in range(adjacency.shape[0]):
-            for j in range(i + 1, adjacency.shape[0]):
-                adjacency[i, j] = adjacency[i, j] / (self.relativeVolumes[i] + self.relativeVolumes[j])
-                adjacency[j, i] = adjacency[j, i] / (self.relativeVolumes[i] + self.relativeVolumes[j])
-        adjacency[adjacency > 0] = np.log10(adjacency[adjacency > 0])
-        return normalize(adjacency)
-
-    def computeInOutDegrees(self):
-        outDegrees = np.sum(self.directedMatrix, axis=0)
-        inDegrees = np.sum(self.directedMatrix, axis=1)
-        return inDegrees, outDegrees
-
-    def computeUndirectedNetwork(self):
-        adjacency = np.copy(self.connectome)
-        for i in range(adjacency.shape[0]):
-            for j in range(i + 1, adjacency.shape[0]):
-                adjacency[i, j] = (adjacency[i, j] + adjacency[j, i]) / (
-                        self.relativeVolumes[i] + self.relativeVolumes[j])
-                adjacency[j, i] = adjacency[i, j]
-        adjacency[adjacency > 0] = np.log10(adjacency[adjacency > 0])
-        return normalize(adjacency)
-
     def computeDistanceBetweenRegions(self):
-        N = self.undirectedMatrix.shape[0]
+        N = len(self.regionNames)
         distance = np.zeros((N, N))
         left = self.regionCentroids['left']
         right = self.regionCentroids['right']
@@ -401,18 +355,13 @@ class MapzebrainAtlas:
             for hemisphere in ['left', 'right']:
                 halfMask = np.copy(mask)
                 if hemisphere == 'left':
-                    halfMask[310:, :, :] = 0
+                    halfMask[284:, :, :] = 0
                 elif hemisphere == 'right':
-                    halfMask[0:311, :, :] = 0
+                    halfMask[:284, :, :] = 0
                 COMs[hemisphere][i, :] = center_of_mass(halfMask)
         COMs['right'][:, 1] = COMs['left'][:, 1]
         COMs['right'][:, 2] = COMs['left'][:, 2]
         self.regionCentroids = COMs
-
-    def saveRegionCentroids(self):
-        file = open(self.path + 'regionCentroids_structure.pkl', 'wb')
-        pickle.dump(self.regionCentroids, file)
-        file.close()
 
     def loadRegionNames(self, path):
         file = open(path + 'names.txt', 'r')
@@ -548,18 +497,21 @@ class MapzebrainAtlas:
         density -= np.amin(density)
         density /= np.amax(density)
         density *= 65535
-        # To fit with current cropped version of the atlas
-        if crop:
-            density = rescale_image(density, (180, 597, 974))
-            density = density[:, :, 200:-57]
+        # To fit with current cropped version of the atlas (deprecated)
+        # if crop:
+        #    density = rescale_image(density, (180, 597, 974))
+        #    density = density[:, :, 200:-57]
         return density
 
 
 def double(vector):
+    """Duplicates values in a 1D vector to make it twice as long."""
     return np.concatenate([vector, vector])
 
 
 def reorder_clusters_anteroposterior(clusters):
+    """Assuming that indices are ordered from anterior to posterior, reorders the cluster ids such that cluster 1 is
+    the most anterior and cluster N is the most posterior."""
     mean_cluster_ids = []
     for c in np.unique(clusters):
         mean_cluster_ids.append(np.percentile(np.where(clusters == c)[0], 33))

@@ -77,7 +77,7 @@ def simulated_annealing(expression, target, N_selected=15, T=2.5, decay=0.9995, 
     M = N_selected
 
     selected_genes = select_random_elements(np.arange(N), M)
-    v0 = objective_function(expression[selected_genes, :], target, method='pearson')
+    v0 = objective_function(expression[selected_genes, :], target, method=method)
 
     while iterations > 0:
 
@@ -88,7 +88,7 @@ def simulated_annealing(expression, target, N_selected=15, T=2.5, decay=0.9995, 
             iterations -= 1
             test_genes = np.copy(selected_genes)
             test_genes[gene_to_swap] = new_gene
-            v1 = objective_function(expression[test_genes, :], target, method='pearson')
+            v1 = objective_function(expression[test_genes, :], target, method=method)
             if v1 > v0:
                 selected_genes = np.copy(test_genes)
                 v0 = v1

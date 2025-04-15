@@ -9,17 +9,18 @@ from scipy.stats import pearsonr, zscore
 from scipy.linalg import expm
 
 from main import *
-#from useful_functions import *
 
 
 def normalize(matrix):
     norm = np.linalg.norm(matrix)
     return matrix / norm
-    
+
+
 def compute_euclidean_proximity(ED, gamma=1):
     EP = inverse_matrix(ED, gamma=gamma, inf=False)
     return EP
-    
+
+
 def compute_shortest_path_wei(A, gamma=1):
     inv_A = np.copy(A)
     inv_A[inv_A != 0] = inv_A[inv_A != 0] ** -gamma
@@ -27,6 +28,7 @@ def compute_shortest_path_wei(A, gamma=1):
     PL, _ = bct.distance_wei(inv_A)
     PL = 0.5 * (PL + PL.T)
     return PL
+
 
 def compute_inverse_shortest_path_wei(A, gamma=1):
     inv_A = np.copy(A)
@@ -37,11 +39,13 @@ def compute_inverse_shortest_path_wei(A, gamma=1):
     ISPL = 0.5 * (ISPL + ISPL.T)
     return ISPL
 
+
 def compute_shortest_path_bin(A):
     bin_A = (A > 0).astype('float')
     PL = bct.distance_bin(bin_A)
     PL = 0.5 * (PL + PL.T)
     return PL
+
 
 def compute_inverse_shortest_path_bin(A):
     bin_A = (A > 0).astype('float')
@@ -49,7 +53,8 @@ def compute_inverse_shortest_path_bin(A):
     ISPL[ISPL != 0] = 1 / ISPL[ISPL != 0]
     ISPL = 0.5 * (ISPL + ISPL.T)
     return ISPL
-    
+
+
 def compute_communicability_wei(A):
     degrees = np.sum(A, axis=1)
     D = np.diag(degrees ** -0.5)
@@ -58,7 +63,8 @@ def compute_communicability_wei(A):
     comm[np.diag_indices(comm.shape[0])] = 0
     comm_sym = 0.5 * (comm + comm.T)
     return comm_sym
-    
+
+
 def communicability(A):
     """
     Compute basics statistics about the communicability of a NetworkX graph,
@@ -89,7 +95,8 @@ def communicability(A):
     communicability_mat = np.array(eigvec @ np.diagflat(np.exp(eigval)) @ eigvec.T ) # scipy version, expm(A_normalized), 
                                                                                      # doesn't always converge to the right answer 
     return communicability_mat
-    
+
+
 def cosine_similarity(vector1, vector2):
     dot_product = np.dot(vector1, vector2)
     norm_vector1 = np.linalg.norm(vector1)
@@ -99,6 +106,7 @@ def cosine_similarity(vector1, vector2):
     else:       
         return dot_product / (norm_vector1 * norm_vector2)
 
+
 def compute_cosine_similarity_inputs(A):
     CS = np.zeros(A.shape)
     for i in range(A.shape[0]):
@@ -107,6 +115,7 @@ def compute_cosine_similarity_inputs(A):
             CS[j, i] = CS[i, j]
     return CS
 
+
 def compute_cosine_similarity_outputs(A):
     CS = np.zeros(A.shape)
     for i in range(A.shape[0]):
@@ -114,7 +123,8 @@ def compute_cosine_similarity_outputs(A):
             CS[i, j] = cosine_similarity(A[:, i], A[:, j])
             CS[j, i] = CS[i, j]
     return CS
-    
+
+
 def pearson_coefficient(vector1, vector2):
     if np.allclose(vector1, np.mean(vector1)) or np.allclose(vector2, np.mean(vector2)):
         return 0
@@ -122,6 +132,7 @@ def pearson_coefficient(vector1, vector2):
         return pearsonr(vector1, vector2)[0]
     else:
         return 0
+
 
 def compute_correlation_inputs(A):
     CS = np.zeros(A.shape)
@@ -131,6 +142,7 @@ def compute_correlation_inputs(A):
             CS[j, i] = CS[i, j]
     return CS
 
+
 def compute_correlation_outputs(A):
     CS = np.zeros(A.shape)
     for i in range(A.shape[0]):
@@ -138,7 +150,8 @@ def compute_correlation_outputs(A):
             CS[i, j] = pearson_coefficient(A[:, i], A[:, j])
             CS[j, i] = CS[i, j]
     return CS
-    
+
+
 def flow_graph(A, t):
     r = np.ones((A.shape[0],))
     s = np.sum(A, axis=0)
@@ -150,7 +163,8 @@ def flow_graph(A, t):
     dyn = (dyn + dyn.T) / 2
 
     return dyn
-    
+
+
 def distance_wei_floyd(adjacency, transform=False, gamma=1):
     """
     Computes the topological length of the shortest possible path connecting
@@ -239,6 +253,7 @@ def distance_wei_floyd(adjacency, transform=False, gamma=1):
 
     return SPL, hops, Pmat
 
+
 def path_transitivity(W, transform=True, gamma=1):
     '''
     This function computes the density of local detours (triangles) that
@@ -299,7 +314,8 @@ def path_transitivity(W, transform=True, gamma=1):
 
     T = T + T.T
     return T
-    
+
+
 def search_information(adjacency, transform=False, gamma=1, has_memory=False):
     """
     Calculates search information of `adjacency`
@@ -395,7 +411,8 @@ def search_information(adjacency, transform=False, gamma=1, has_memory=False):
                         SI[i, j] = np.inf
 
     return SI
-    
+
+
 def compute_search_information(A, gamma=1, transform=True):
     SI = search_information(A, transform=transform, gamma=gamma)
     SI = 0.5 * (SI + SI.T)
@@ -411,11 +428,13 @@ def inverse_matrix(A, gamma=1, inf=True):
             inv_A[inv_A == np.inf] = 0
         return inv_A
 
+
 def compute_mfpt_wei(A):
     M = zscore(bct.mean_first_passage_time(A), axis=0)
     M = 0.5 * (M + M.T)    
     return M
-    
+
+
 def navigation_wu(L, D, max_hops=None):
     '''
     Navigation of connectivity length matrix L guided by nodal distance D
@@ -666,14 +685,6 @@ class Predictors:
             si_wei.append(si)
             self.predictors_names.append('si-wei-{}'.format(gamma))
         self.predictors_list += si_wei
-
-        #mfpt_bin = compute_mfpt_wei((self.A_und > 0).astype('float'))
-        #self.predictors_list.append(mfpt_bin)
-        #self.predictors_names.append('mfpt-bin')
-
-        #mfpt_wei = compute_mfpt_wei(self.A_und)
-        #self.predictors_list.append(mfpt_wei)
-        #self.predictors_names.append('mfpt-wei')
 
         if directed:
             outputs = navigation_wu(inverse_matrix(self.A, inf=False), self.euclidean_distance, max_hops=10000)
