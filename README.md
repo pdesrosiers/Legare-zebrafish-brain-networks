@@ -6,7 +6,7 @@ If you use this repository for your own work, please cite the paper!
 
 # Repository overview
 
-All data analyses from the paper are conducted in multiple Jupyter notebooks that are mostly split into 2 categories: Some that compute results for specific figures of the paper (`FigureX-Analysis` notebooks), and some that take these results to generate figures (`FigureX-Layout` notebooks) for subsequent modifications using Inkscape. Notebooks import functions in adjacent `.py` files and perform analyses on a processed calcium imaging dataset that can be downloaded here (roughly 20 GB of data). If notebooks are executed in the correct order, all figures can be reproduced, with the exception of a few panels that require raw data (over a terabyte, available upon reasonable request). Supplementary analyses are done in `Supp-` notebooks.
+All data analyses from the paper are conducted in multiple Jupyter notebooks that are mostly split into 2 categories: Some that compute results for specific figures of the paper (`FigureX-Analysis` notebooks), and some that take these results to generate figures (`FigureX-Layout` notebooks) for subsequent modifications using Inkscape. Notebooks import functions in adjacent `.py` files and perform analyses on a processed calcium imaging dataset that can be downloaded [here](https://doi.org/10.5281/zenodo.15224945) (roughly 20 GB of data). If notebooks are executed in the correct order, all figures can be reproduced, with the exception of a few panels that require raw data (over a terabyte, available upon reasonable request). Supplementary analyses are done in `Supp-` notebooks.
 
 # Notebooks list
 
