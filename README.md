@@ -16,10 +16,12 @@ Data analyses are conducted in multiple Jupyter notebooks that are mostly split 
 - `Figure5-Layout`: Loads previously calculated results and generates **Figure 5**.
 - `Figure6-Layout`: Loads previously calculated results and generates **Figure 6**.
 - `Figure7-Layout`: Loads previously calculated results and generates **Figure 7**.
-
+- `Supp-Figures` : Generates **Supplementary Figures S1, S2, S5, S8, S13, S14, S15, S16, S20, S21, S22, S23, S25**.
+- `Supp-Fingerprinting` : Compares different methods to fingerprint the identity of larvae from calcium imaging data, then generates **Supplementary Figure S6**.
+- `Supp-SC-Validations` : Validation of the boundary expansion procedure for SC calculation, related to **Supplementary Figure S9**.
 - `Supp-SCCM` : Defines the connectivity null model, generates null connectivity matrices from SC matrices generated beforehand, and generates **Supplementary Figures S10, S11, & S12**.
 - `Supp-SparseSC` : Replication of key results using the sparse SC matrix, related to **Supplementary Figure S18**.
-- `Supp-SC-Valudations` : Validation of the boundary expansion procedure for SC calculation, related to **Supplementary Figure S9**.
+- `Supp-Gradients` : Computes FC gradients in various FC definitions, then generates **Supplementary Figure S24**.
 
 # Authors
 
