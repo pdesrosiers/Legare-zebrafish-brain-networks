@@ -1,12 +1,14 @@
 # Structural and genetic determinants of zebrafish functional brain networks
 
-Code associated with the "Structural and genetic determinants of zebrafish functional brain networks" paper, currently available on [bioRxiv](https://www.biorxiv.org/content/10.1101/2024.12.20.629476v1.abstract). If you use this repository for your own work, please cite the paper!
+Code associated with the "Structural and genetic determinants of zebrafish functional brain networks" paper, currently available on [bioRxiv](https://www.biorxiv.org/content/10.1101/2024.12.20.629476v1.abstract). 
 
-# Overview
+If you use this repository for your own work, please cite the paper!
 
-Data analyses are conducted in multiple Jupyter notebooks that are mostly split into 2 categories: Some that compute results for specific figures of the paper (`FigureX-Analysis` notebooks), and some that take these results to generate figures (`FigureX-Layout` notebooks) for subsequent modifications using Inkscape. Notebooks import functions in adjacent `.py` files and perform analyses on a processed calcium imaging dataset that can be downloaded elsewhere (roughly 20 GB of data). If notebooks are executed in the correct order (see below), most of the figure panels can be reproduced, with the exception of a few figures that require raw data (over a terabyte, available upon reasonable request). Supplementary analyses are done in `Supp-` notebooks.
+# Repository overview
 
-# Detailed list
+All data analyses from the paper are conducted in multiple Jupyter notebooks that are mostly split into 2 categories: Some that compute results for specific figures of the paper (`FigureX-Analysis` notebooks), and some that take these results to generate figures (`FigureX-Layout` notebooks) for subsequent modifications using Inkscape. Notebooks import functions in adjacent `.py` files and perform analyses on a processed calcium imaging dataset that can be downloaded here (roughly 20 GB of data). If notebooks are executed in the correct order, all figures can be reproduced, with the exception of a few panels that require raw data (over a terabyte, available upon reasonable request). Supplementary analyses are done in `Supp-` notebooks.
+
+# Notebooks list
 
 - `Figure1-Analysis` : This notebook briefly inspects the calcium imaging dataset, counts neurons in every brain region, excludes regions with few cells, detrends fluorescence time series, computes functional networks, and performs the inter-individual similarity/fingerprinting analysis; statistical validations of fingerprinting are conducted in a separate notebook.
 - `Figure1-Layout` : Loads previously calculated results and generates **Figure 1**.
@@ -33,6 +35,10 @@ Data analyses are conducted in multiple Jupyter notebooks that are mostly split 
 - `Supp-SCCM` : Defines the connectivity null model, generates null connectivity matrices from SC matrices generated beforehand, and generates **Supplementary Figures S10, S11, & S12**.
 - `Supp-SparseSC` : Replication of key results using the sparse SC matrix, related to **Supplementary Figure S18**.
 - `Supp-Gradients` : Computes FC gradients in various FC definitions, then generates **Supplementary Figure S24**.
+
+# Installation
+
+Download this repository, then run the notebooks in a Python environment equipped with the appropriate packages, which can all be `pip` installed easily. Some notebooks will output files in a `Results/` folder, which should be manually created and placed adjacent to the notebooks.
 
 # Authors
 
