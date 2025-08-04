@@ -1,14 +1,13 @@
 # Structural and genetic determinants of zebrafish functional brain networks
 
-Code associated with the "Structural and genetic determinants of zebrafish functional brain networks" paper, currently available on [bioRxiv](https://www.biorxiv.org/content/10.1101/2024.12.20.629476v1.abstract). 
+Code associated with the "Structural and genetic determinants of zebrafish functional brain networks" paper, currently available on [Science Advances, 11(28), eadv7576](https://doi.org/10.1126/sciadv.adv7576). 
 
-If you use this repository for your own work, please cite the paper!
 
-# Repository overview
+## Repository overview
 
 All data analyses from the paper are conducted in multiple Jupyter notebooks that are mostly split into 2 categories: Some that compute results for specific figures of the paper (`FigureX-Analysis` notebooks), and some that take these results to generate figures (`FigureX-Layout` notebooks) for subsequent modifications using Inkscape. Notebooks import functions in adjacent `.py` files and perform analyses on a processed calcium imaging dataset that can be downloaded [here](https://doi.org/10.5683/SP3/IIVGOB) (roughly 20 GB of data). If notebooks are executed in the correct order, all figures can be reproduced, with the exception of a few panels that require raw data (over a terabyte, available upon reasonable request). Supplementary analyses are done in `Supp-` notebooks.
 
-# Notebooks list
+## Notebooks list
 
 - `Figure1-Analysis` : This notebook briefly inspects the calcium imaging dataset, counts neurons in every brain region, excludes regions with few cells, detrends fluorescence time series, computes functional networks, and performs the inter-individual similarity/fingerprinting analysis; statistical validations of fingerprinting are conducted in a separate notebook.
 - `Figure1-Layout` : Loads previously calculated results and generates **Figure 1**.
@@ -36,11 +35,32 @@ All data analyses from the paper are conducted in multiple Jupyter notebooks tha
 - `Supp-SparseSC` : Replication of key results using the sparse SC matrix, related to **Supplementary Figure S18**.
 - `Supp-Gradients` : Computes FC gradients in various FC definitions, then generates **Supplementary Figure S24**.
 
-# Installation
+## Installation
 
 Download this repository, then run the notebooks in a Python environment equipped with the appropriate packages, which can all be `pip` installed easily. Some notebooks will output files in a `Results/` folder, which should be manually created and placed adjacent to the notebooks.
 
-# Authors
+## Citation
+If you use this repository for your own work, please cite the paper:
+
+> Légaré, A., Lemieux, M., Boily, V., Poulin, S., Légaré, A., Desrosiers, P., & De Koninck, P. (2025). Structural and genetic determinants of zebrafish functional brain networks. Science Advances, 11(28), eadv7576. [https://doi.org/10.1126/sciadv.adv7576](https://doi.org/10.1126/sciadv.adv7576)
+
+BibTeX:
+
+```bibtex
+@article{legare2025structural,
+  title = {Structural and genetic determinants of zebrafish functional brain networks},
+  author = {L{\'e}gar{\'e}, Antoine and Lemieux, Mado and Boily, Vincent and Poulin, Sandrine and L{\'e}gar{\'e}, Arthur and Desrosiers, Patrick and De Koninck, Paul},
+  journal = {Science Advances},
+  volume = {11},
+  number = {28},
+  pages = {eadv7576},
+  year = {2025},
+  doi = {10.1126/sciadv.adv7576},
+  url = {https://doi.org/10.1126/sciadv.adv7576}
+}
+```
+
+## Authors
 
 - Antoine Légaré (antoine.legare.1@ulaval.ca)
 - Patrick Desrosiers (patrick.desrosiers@phy.ulaval.ca)
